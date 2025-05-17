@@ -1,12 +1,15 @@
 const express = require('express');
 const router = express.Router();
 const Pin = require('../models/Pin');
+const authMiddleware = require('../middleware/authMiddleware');
+
 
 // Create Pin
-router.post('/', async (req, res) => {
+router.post('/', authMiddleware, async (req, res) => {
     try{
         const { title, desc, imageUrl, user, tags } = req.body;
-        const pin =  new Pin({ title, desc, imageUrl, user, tags });
+        const pin =  new Pin({ 
+          title, desc, imageUrl, tags, user: req.user.id });
         const savedPin = await pin.save();
         res.status(201).json(savedPin);
     } catch (err) {
@@ -19,7 +22,7 @@ router.post('/', async (req, res) => {
 
 router.get('/', async (req, res) => {
     try{
-        const pins = await Pin.find().populate('user', 'username avatar').sort({ createdAt: -1 });
+        const pins = await Pin.find().sort({ createdAt: -1 });
         res.json(pins);
     } catch (err) {
        console.error('Pin Route Error:', err);
@@ -40,8 +43,14 @@ router.get('/:id', async (req, res) => {
 });
 
 // Update Pin
-router.put('/:id', async (req, res) => {
+router.put('/:id', authMiddleware,async (req, res) => {
   try {
+    const pin = await Pin.findById(req.params.id);
+    if(!Pin) return res.status(404).json({ message: 'Pin not found'});
+
+    if (pin.user.toString() !== req.user.id) {
+      return res.status(403).json({ message: 'Not authorized to edit this pin' });
+    }
     const updatedPin = await Pin.findByIdAndUpdate(req.params.id, req.body, { new: true });
     if (!updatedPin) return res.status(404).json({ message: 'Pin not found' });
     res.json(updatedPin);
@@ -52,10 +61,16 @@ router.put('/:id', async (req, res) => {
 });
 
 // Delete Pin
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', authMiddleware, async (req, res) => {
   try {
-    const deletedPin = await Pin.findByIdAndDelete(req.params.id);
-    if (!deletedPin) return res.status(404).json({ message: 'Pin not found' });
+    const pin = await Pin.findById(req.params.id);
+    if (!pin) return res.status(404).json({ message: 'Pin not found' });
+
+    if (pin.user.toString() !== req.user.id) {
+      return res.status(403).json({ message: 'Not authorized to delete this pin' });
+    }
+
+    await pin.deleteOne();
     res.json({ message: 'Pin deleted' });
   } catch (err) {
     console.error('Pin Route Error:', err);
